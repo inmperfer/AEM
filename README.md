@@ -1,6 +1,5 @@
-# Aprendizaje Estadístico y Modelización
+## Contenido
 
-## Contenido de la asignatura
 1. Conceptos básicos del Aprendizaje Estadístico.
 2. Modelo Lineal Generalizado.
 3. Regresión con regularización
