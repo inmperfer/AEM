@@ -1,0 +1,453 @@
+---
+title: "AEM: Trabajo evaluación KNN"
+author: "Alumno: Inmaculada Perea Fernández"
+date: "Febrero 2017"
+output: pdf_document
+---
+  
+
+Carga de los paquetes necesarios (si no los tiene instalados utilice el comando install.packages)
+
+```{r, message=FALSE, warning=FALSE}
+library(kknn)
+library(rknn)
+```
+
+
+Establezco la semilla del generador aleatorio para que los resultados de cada ejecución siempre sean los mismos y pueda comparar valores
+```{r}
+set.seed(123456789)
+```
+
+# Obtención e inspección del conjunto de datos para el estudio
+
+Carga de los ficheros de datos 'datawork.csv'
+
+```{r}
+datawork <- read.table("datawork.csv", header=TRUE, sep=";")
+
+# Dimensiones: n=4000 casos, m=42 variable
+dim(datawork)
+names(datawork)
+head(datawork, 3)
+str(datawork)
+```
+
+# 1. PROBLEMA DE CLASIFICACIÓN
+
+## 1.1 Estandarización de los datos
+
+Las variables incluidas en la definición de la distancia deben estar sobre la misma escala o, al menos, escalas similares. Al tratarse de atributos cuantitativos conviene estandarizar los datos.
+```{r}
+# Normalización a través del criterio min-max
+class_data = data.frame(normalize.unit(datawork[3:42]), clasobj=datawork$clasobj) 
+dim(class_data)
+names(class_data)
+summary(class_data)
+
+```
+
+
+## 1.2 Determinación de un clasificador basado en kNN ponderado para la variable objetivo "clasobj" con los atributos x01 ... x40.
+
+
+1) Seleccionar aleatoriamente un conjunto test de tamaño n/3 y un conjunto de aprendizaje de
+tamaño 2n/3.
+```{r}
+
+# Tamaño de la muestra, número de casos
+(n <- dim(class_data)[1])
+
+# Muestra aleatoria sin reemplazamiento de tamaño n/3
+test <- sample(1:n, size = round(n/3), replace = FALSE, prob = rep(1/n, n))
+
+# Conjunto de datos para aprendizaje
+class_data.train <- class_data[-test,]
+dim(class_data.train)
+
+# Conjunto de datos prueba
+class_data.test <- class_data[test,]
+dim(class_data.test)
+```
+
+
+
+2) Con el conjunto de aprendizaje, selecciona el mejor núcleo y el mejor k (entre 1 y 20) a través de validación cruzada
+
+Se construiran 2 modelos con diferentes distancias (parámetros de distancia de Minkowski) y se medirá con cual de ellos se obtienen mejores resultados
+```{r}
+# Minkowski p=1 (distancia manhattan)
+modelo_clasificacion1 <- train.kknn(clasobj ~ ., class_data.train, kmax=20, distance = 1,
+                         kernel= c("rectangular", "triangular", "epanechnikov", "gaussian",
+                                   "biweight", "triweight", "optimal", "rank", "cos", "inv"))
+
+
+# Minkowski p=2 (distancia euclidea)
+modelo_clasificacion2 <- train.kknn(clasobj ~ ., class_data.train, kmax=20, distance = 2,
+                         kernel = c("rectangular", "triangular", "epanechnikov", "gaussian",
+                                    "biweight","triweight", "optimal", "rank", "cos", "inv"))
+
+```
+
+
+**Modelo de clasificación 1 (usando la distancia Manhattan)**
+```{r}
+# Valores óptimos de k y kernel para el modelo 1
+modelo_clasificacion1$best.parameters
+
+# Representación gráfica del error de clasificación del modelo 1 para cada valor de kernel y k
+plot(modelo_clasificacion1)
+
+# Error de clasificación del modelo 1 con los parámetros óptimos
+modelo_clasificacion1$MISCLASS[modelo_clasificacion1$best.parameters$k,
+                               modelo_clasificacion1$best.parameters$kernel]
+```
+
+En el modelo 1 se obtiene el minimo error de clasificación para kernel 'rectangular' y k=5. Se observa en la gráfica que a partir de k=4 el error se mantiene prácticamente constante.
+
+El hecho de que el kernel óptimo sea el 'rectangular' nos indica que no debemos ponderar. Se debe dar el mismo peso a los 5 vecinos mas cercanos, independientemente de cual sea su distancia a la nueva observación que se quiere clasificar.
+
+
+**Modelo de clasificación 2 (usando la distancia euclidea)**
+```{r}
+# Valores óptimos de k y kernel para el modelo 2 
+modelo_clasificacion2$best.parameters
+
+# Representación gráfica del error de clasificación del modelo 2 para cada valor de kernel y k
+plot(modelo_clasificacion2)
+
+# Error de clasificación del modelo 2 con los parámetros óptimos
+modelo_clasificacion2$MISCLASS[modelo_clasificacion2$best.parameters$k,
+                               modelo_clasificacion2$best.parameters$kernel]
+```
+
+En el modelo 2 se obtienen valores similares a los del modelo 1. El kernel óptimo es el mismo, pero la k óptima es bastante mayor, K=12. Sin embargo observamos que el comportamiento es similar al del modelo 1. A partir de k=4 para el kernel rectangular se obtienen valores de error de clasificación muy similares, prácticamente constantes.
+
+
+3) Aplicar el clasificador óptimo obtenido para clasificar los casos del conjunto test y obtener una medida del error de clasificación y la tabla de confusión asociada
+
+
+**Tabla de confusión**
+```{r}
+# Tabla de confusión para el modelo 1 (d=1)
+(confusion1=table(predict(modelo_clasificacion1, class_data.test), 
+                  class_data.test$clasobj))
+
+# Tabla de confusión para el modelo 2 (d=2)
+(confusion2=table(predict(modelo_clasificacion2, class_data.test), 
+                  class_data.test$clasobj))
+```
+
+Las tablas de confusión de ambos modelos son idénticas. 
+
+A continuación cuantificaremos el error cometido, es igual en ambos modelos
+```{r}
+(n.test=dim(class_data.test)[1])
+(error_clasificacion=(n.test 
+                      - confusion1[1,1]
+                      - confusion1[2,2]
+                      - confusion1[3,3]
+                      - confusion1[4,4]) / n.test)
+```
+
+Se puede concluir que ambos clasificadores ofrecen resultados similares. 
+Aunque no se incluye en este script, se ha calculado tambien la La tasa de error sin normalizar los datos y se obtienen los mismos resultados.
+La tasa de error es bastante baja, e igual a 2,025%. Optaremos por el clasificador 1 ya que tiene valor menor de k.
+
+
+# 2. PROBLEMA DE REGRESIÓN
+
+# 2.1 Determinación de un predictor basado en kNN ponderado para la variable objetivo "varobj" con los atributos x01 ... x40
+
+**Construccion y normalización del dataframe de datos para regresión**
+```{r}
+# Normalización a través del criterio min-max
+reg_data = data.frame(normalize.unit(datawork[3:42]), varobj=datawork$varobj) 
+dim(reg_data)
+names(reg_data)
+summary(reg_data)
+```
+
+
+**Contrucción del conjunto test y aprendizaje**
+
+Utilizamos la misma muestra aleatoria (test) que utilizamos para el problema de clasificación
+```{r}
+# Conjunto de datos para aprendizaje
+reg_data.train <- reg_data[-test,]
+dim(reg_data.train)
+
+# Conjunto de datos prueba
+reg_data.test <- reg_data[test,]
+dim(reg_data.test)
+```
+
+
+###2.1.1 Con el conjunto de aprendizaje, selecciona el mejor núcleo y el mejor k (entre 1 y 20) a través de validación cruzada
+
+```{r}
+modelo_regresion_ponderado <- train.kknn(varobj ~ ., reg_data.train, kmax=20, scale="FALSE",
+                                         kernel = c( "rectangular","triangular", "inv", 
+                                                     "gaussian","biweight","triweight", "cos",
+                                                     "rank", "optimal", "epanechnikov"), 
+                                         distance = 2)
+
+
+plot(modelo_regresion_ponderado, main="ERROR CUADRÁTICO MEDIO")
+
+modelo_regresion_ponderado$MEAN.SQU
+
+# Parámetros óptimos (k, kernel)
+modelo_regresion_ponderado$best.parameters
+
+# Error predicción con los parámetros óptimos
+modelo_regresion_ponderado$MEAN.SQU[modelo_regresion_ponderado$best.parameters$k,
+                                    modelo_regresion_ponderado$best.parameters$kernel]
+```
+
+Se obtiene que los valores de k y kernel para los que se minimiza el error de predicción es para k=2 y kernel 'optimal'. El error cuadrático medio es igual a 161.8855
+
+
+### 2.1.2 Aplicar el predictor óptimo obtenido para predecir los casos del conjunto test y obtener una medida del error de predicción.
+```{r}
+# Predicciones del conjunto test
+pred_ponderado=predict(modelo_regresion_ponderado, reg_data.test)
+
+# Error cuadrático medio
+(MSE_ponderado=(sum((reg_data.test$varobj - pred_ponderado)^2))/(dim(reg_data.test)[1]))
+
+```
+
+El error cuadrático medio obtenido al aplicar el modelo knn ponderado al conjunto test es igual a 12.16573.
+
+
+# 2.2 Determinación de un predictor basado en kNN aleatorio para la variable objetivo "varobj" con los atributos x01.x40.
+
+A continuación construiremos el modelo knn aleatorio y compararemos los resultados obtenidos con el modelo knn ponderado construido en el apartado anterior.
+
+Tomo k=2 porque fue el k óptimo que obtuve en el modelo de regresión knn ponderado que construimos en el apartado anterior.
+
+El paquete no funciona bien con dimensiones grandes, pero k=2 y r=52 no es demasiado alto, por lo que realizaré los calculos manteniendo el valor optimo de k obtenido.
+
+```{r}
+# Numero de atributos
+(p=ncol(datawork)-2)
+
+# Número de atributos en cada clasificador
+(m=floor(sqrt(p)))
+
+# Número de clasificadores Knn
+(rnc=r(p, m, eta=0.99, method="binomial"))
+
+# Modelo knn aleatorio
+modelo_aleatorio = rknnReg(data=reg_data.train, reg_data.test, y=reg_data.train$varobj, 
+                           k = 2, r=rnc, mtry = m , seed=123456789)
+```
+
+Representaremos cómo de próximos están los valores reales de la variable objetivo (varobj) de los que predice el modelo y calcularemos el error cuadrático medio cometido al aplicar sobre el conjunto test
+
+```{r}
+# Gráfico de los valores reales frente a los que predice el modelo
+plot(reg_data.test$varobj, modelo_aleatorio$pred, xlim=c(0,40),ylim=c(0,40))
+abline(a=0,b=1)
+
+# Error cuadrático medio al aplicar el modelo de regresion knn aleatorio al conjunto test
+(MSE_aleatorio=(sum((reg_data.test$varobj - modelo_aleatorio$pred)^2))/(dim(reg_data.test)[1]))
+```
+
+A la vista de la gráfica y el valor del error obtenido se puede concluir que el modelo kkn aleatorio sin selección de variables no da buenos resultados, ya que los valores que precide para el conjunto test no están próximos a los valores reales. Los puntos no están sobre la línea, y el error cuadrático medio es  21.56924.
+
+A continuación aplicaremos selección de variables para ver si el modelo mejora y el error disminuye.
+
+
+
+## Seleccion de variables
+
+Mediremos la precisión o "acuracidad" del modelo knn aleatorio, que se obtienen a través de un procedimiento de validación cruzada
+
+```{r}
+modelo_aleatorio_soporte = rknnRegSupport(data=reg_data.train, y=reg_data.train$varobj, 
+                                          k=2, r=rnc, mtry=m , seed=123456789)
+
+# Medida de la acuracidad del método
+modelo_aleatorio_soporte$accuracy  
+
+# Acuracidad media de los r clasificadores generados
+modelo_aleatorio_soporte$meanacc
+
+# Vector (dimensión p) de las medidas "soporte" de los atributos
+modelo_aleatorio_soporte$support   
+
+# Gráfico de las medidas soporte de los atributos
+plot(modelo_aleatorio_soporte$support)
+
+# Gráfico de los atributos más importates según la medida soporte
+plot(modelo_aleatorio_soporte, n.var= 20, main = "Soporte de los atributos",
+     bg = "green", lcolor="blue") 
+```
+
+Observamos saltos en los gráficos, esto es indicativo de que debemos realizar una seleccion de atributos para mejorar los resultados.
+
+**Selección Geométrica**
+
+Comenzaremos realizando selección "geométrica" con una reducción del 20% en cada paso (q=0.2, o bien, pk=0.8)
+
+Elijo como criterio de parada 4 (10% del total de atributos)
+
+```{r}
+# Utilizo todo el conjunto de datos  
+modelo_aleatorio_selG = rknnBeg(data=reg_data, y=reg_data$varobj, k=2, r=rnc, mtry=m , 
+                                seed=123456789, fixed.partition=FALSE, pk=0.8 , stopat=4)
+
+
+# Vector de número de variables seleccionadas en cada paso
+modelo_aleatorio_selG$p
+
+# Lista de variables o atributos en cada paso
+#modelo_aleatorio_selG$vars 
+
+# Lista del valor medio de la medida soporte en cada uno de los pasos
+modelo_aleatorio_selG$mean_support
+
+# Lista del valor medio de la acuracidad en cada uno de los pasos
+modelo_aleatorio_selG$mean_accuracy 
+
+# Gráfica de la medida de acuracidad en cada paso de la etapa de reducción Geométrica
+plot(modelo_aleatorio_selG$mean_accuracy, type="l", xlab="Paso", ylab="Acuracidad media",
+     main="medida de acuracidad en cada paso. Etapa Geométrica")
+
+# Gráfica de la medida de soporte en cada paso de la etapa de reducción Geométrica
+plot(modelo_aleatorio_selG$mean_support, type="l", xlab="Paso", ylab="Soporte medio",
+     main="Soporte medio en cada paso. Etapa Geométrica")
+
+plot(modelo_aleatorio_selG$mean_support, modelo_aleatorio_selG$mean_accuracy)
+
+# Mejor conjunto de atributos usando como criterio la acuracidad
+bestset(modelo_aleatorio_selG, criterion="mean_accuracy")
+
+# Mejor conjunto de atributos usando como criterio el valor de soporte
+bestset(modelo_aleatorio_selG, criterion="mean_support")
+```
+
+
+Los mejores valores de acuracidad y soporte se obtienen en el último paso de selección geométrica. Es decir, el paso 11, con un número de variables igual a 5.
+
+```{r}
+modelo_aleatorio_selG$vars[11]
+```
+
+En las gráficas tambien se observa este comportamiento, es decir, la acuracidad y soporte crecen en cada paso. 
+Vemos en el grafico que tiende a crecer porque al quitar variables elimina ruido y por tanto mejora el resultado.
+
+
+
+**Selección lineal**
+
+A continuación seleccionaremos el conjunto de datos con las variables seleccionadas en la etapa geométrica, y la variable objetivo, y aplicaremos el criterio de selección de la etapa lineal.
+
+Para la selección lineal no partiremos del modelo óptimo obtenido de la selección geométrica, ya que voy a seguir eliminando variables. Por tanto tomaré como modelo de partida el del paso inmediatamente anterior al optimo obtenido en la etapa geométrica.
+
+Este modelo tiene 5 atributos
+
+```{r}
+(modelo_aleatorio_selG.best <- prebestset(modelo_aleatorio_selG, criterion="mean_support"))
+```
+
+
+Aplicaremos selección lineal con una reducción d=1 en cada paso
+
+```{r}
+modelo_aleatorio_selLIN = rknnBel(data=reg_data[,modelo_aleatorio_selG.best], y=reg_data$varobj, 
+                           k = 2, r=rnc, mtry=m , seed=123456789, fixed.partition = FALSE, 
+                           d=1, stopat=3)
+
+
+# Vector de número de variables seleccionadas en cada paso
+modelo_aleatorio_selLIN$p
+
+# Lista de variables o atributos en cada paso
+modelo_aleatorio_selLIN$vars
+
+# Lista del valor medio de la medida soporte en cada uno de los pasos
+modelo_aleatorio_selLIN$mean_support
+
+# Lista del valor medio de la acuracidad en cada uno de los pasos
+modelo_aleatorio_selLIN$mean_accuracy
+
+plot(modelo_aleatorio_selLIN$mean_accuracy, type="l", xlab="Paso", ylab="Acuracidad media",
+     main="medida de acuracidad en cada paso. Etapa Lineal")
+
+plot(modelo_aleatorio_selLIN$mean_support, type="l", xlab="Paso", ylab="Soporte medio",
+     main="Soporte medio en cada paso. Etapa Lineal")
+
+plot(modelo_aleatorio_selLIN$mean_support, modelo_aleatorio_selLIN$mean_accuracy)
+
+bestset(modelo_aleatorio_selLIN, criterion="mean_support")
+bestset(modelo_aleatorio_selLIN, criterion="mean_accuracy")
+```
+
+
+En esta etapa obtenemos la mejor medida de acuracidad y soporte en el paso 3. En este paso el número de atributos es igual a 3
+
+```{r}
+modelo_aleatorio_seleccion <- bestset(modelo_aleatorio_selLIN, criterion="mean_support")
+```
+
+Estas variables son las que mejor predicen la variable objetivo. Por tanto, aplicaremos la técnica kNN aleatorio con los atributos seleccionados y mediremos el error
+
+```{r}
+(numsel=modelo_aleatorio_selLIN$p[3])
+(sel_mtry=round(0.5*numsel,0))
+
+# Modelo Knn aleatorio con selección de variables
+modelo_aleatorio_seleccion.best = rknnReg(data=reg_data.train[,modelo_aleatorio_seleccion],         
+                                          reg_data.test[,modelo_aleatorio_seleccion], 
+                                          y=reg_data.train$varobj, k = 2, r=rnc, 
+                                          mtry=sel_mtry , seed=123456789)
+
+
+
+# Error cuadrático medio al aplicar el modelo de regresion knn aleatorio al conjunto test
+(MSE_aleatorio_sel=(sum((reg_data.test$varobj 
+                         - modelo_aleatorio_seleccion.best$pred)^2))/(dim(reg_data.test)[1]))
+
+```
+
+Vemos que el error se ha reducido considerablemente con la selección de variables, el valor del MSE para el modelo Knn aleatorio con selección de variables es 4.790326.
+
+
+# 2.3 Realizar un estudio comparativo entre ambos resultados
+
+A continuación compararemos los tres modelos de regresión construidos.
+
+```{r}
+# Weighted kNN p=40
+plot(reg_data.test$varobj, pred_ponderado, xlim=c(0,40), ylim=c(0,40), 
+     main="Weighted kNN: k=2, p=40")
+
+abline(a=0,b=1)
+
+# Random kNN p=40
+plot(reg_data.test$varobj, modelo_aleatorio$pred, xlim=c(0,40), ylim=c(0,40), 
+     main="Random kNN: k=2, p=40")
+
+abline(a=0,b=1)
+
+# Random kNN p=3
+plot(reg_data.test$varobj, modelo_aleatorio_seleccion.best$pred, col=4,
+     main="Random kNN: k=2, p=3")
+
+abline(a=0,b=1)
+
+
+MSE=rbind( "Random kNN p=3" = round(MSE_aleatorio_sel, 3),
+           "Random kNN p=40" = round(MSE_aleatorio, 3),
+           "Weighted kNN p=40" = round(MSE_ponderado, 3) )
+
+# Tabla comparativa del error cuadrático medio para los modelos de regresión construidos
+print(knitr::kable(MSE, format = "pandoc", align='c'))
+```
+
+Se puede concluir que el mejor modelo de regresión es el knn aleatorio con selección de variables (3 atributos). Este modelo es el que presenta un MSE menor al aplicar el modelo al conjunto test. También puede observarse en la gráfica que los valores predichos de la variable objetivo (varobj) están muy próximas a los valores reales.
+
+

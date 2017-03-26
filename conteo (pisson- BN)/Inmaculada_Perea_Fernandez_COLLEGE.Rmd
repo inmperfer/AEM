@@ -1,0 +1,809 @@
+---
+title: "AEMOD: Ejercicio 2 (Fichero College)"
+author: "Inmaculada Perea Fernández"
+date: "Febrero 2017"
+output: pdf_document
+---
+
+
+Con el fichero College de la librería ISLR
+
+Proponer un modelo gam  para la variable Grad.Rate  eligiendo la función que considere adecuada para cada variable predictora.
+
+# 1. Carga de librerías necesarias
+```{r message=FALSE, warning=FALSE}
+library(ISLR)
+library(ggplot2)
+library(gam)
+```
+
+# 2. Obtención e inspección del conjunto de datos para el estudio
+
+El fichero College tiene las siguientes variables:
+
+* Private: A factor with levels No and Yes indicating private or public university
+* Apps: Number of applications received (socicitudes recibidas)
+* Accept: Number of applications accepted (solicitudes aceptadas)
+* Enroll: Number of new students enrolled (numero de nuevos estuciantes matriculados)
+* Top10perc: Pct. new students from top 10% of H.S. class (top 10)
+* Top25perc: Pct. new students from top 25% of H.S. class (top 25)
+* F.Undergrad: Number of fulltime undergraduates (matriculados a tiempo completo)
+* P.Undergrad: Number of parttime undergraduates (matriculados a tiempo parcial)
+* Outstate: Out-of-state tuition (coste matricula para no residentes)
+* Room.Board: Room and board costs (gastos en alojamiento y pension)
+* Books: Estimated book costs (coste libros)
+* Personal: Estimated personal spending (gastos personales)
+* PhD: Pct. of faculty with Ph.D.'s (profesorado con Phd)
+* Terminal: Pct. of faculty with terminal degree
+* S.F.Ratio: Student/faculty ratio
+* perc.alumni: Pct. alumni who donate
+* Expend: Instructional expenditure per student
+* Grad.Rate: Graduation rate
+
+```{r message=FALSE, warning=FALSE}
+data(College)
+college <- College
+attach(college)
+dim(college)
+str(college)
+head(college)
+summary(college)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+ggplot(college, aes(Grad.Rate)) +  geom_histogram(binwidth=.6, position="dodge")
+```
+
+```{r message=FALSE, warning=FALSE}
+ggplot(college, aes(Grad.Rate, fill = Private)) +
+  geom_histogram(binwidth=.7, position="dodge")
+```
+```{r message=FALSE, warning=FALSE}
+
+plot(Private, Grad.Rate, varwidth=T, col="red",
+     xlab="Private", ylab="Grad.Rate",
+     main="Relacion con private")
+```
+
+
+# 2.2 Seleccion de variables
+El conjunto de datos existe un elevado número de variables, vamos a aplicar alguna de las técnicas de reduccion de la dimensionalidad estudiadas para simplificar el problema.
+
+Utilizamos procedimiento de selección secuencial hacia delante proporcionado por la funcion **Step**, que usa como criterio de selección el AIC.
+
+```{r message=FALSE, warning=FALSE}
+# Partimos del modelo lineal que incluye todas las variables
+modeloRL=lm(Grad.Rate~.,data=college)
+
+modelostep_fw=step(modeloRL,direction="forward", trace=FALSE)
+min(modelostep_fw$anova$AIC)
+modelostep_fw$call
+```
+
+```{r message=FALSE, warning=FALSE}
+modelostep_bw=step(modeloRL,direction="backward", trace=FALSE)
+min(modelostep_bw$anova$AIC)
+modelostep_bw$call
+```
+
+```{r message=FALSE, warning=FALSE}
+modelostep_both=step(modeloRL,direction="both", trace=FALSE)
+min(modelostep_both$anova$AIC)
+modelostep_both$call
+```
+
+Tanto el procedimiento hacia adelante como el que combina ambas direcciones proporcionan el mismo modelo.
+
+El procedimiento **elimina** las siguientes variables:
+
+* **Accept**: Number of applications accepted (solicitudes aceptadas)
+* **Enroll**: Number of new students enrolled (numero de nuevos estuciantes matriculados)
+* **Top10perc**: Pct. new students from top 10% of H.S. class (top 10)
+* **F.Undergrad**: Number of fulltime undergraduates (matriculados a tiempo completo)
+* **Books**: Estimated book costs (coste libros)
+* **S.F.Ratio**: Student/faculty ratio
+
+
+Las variables anteriores se pueden eliminar del estudio, ya que no son significativas para el estudio de la variable objetivo o porque son combinaciones de otras y por tanto ya stán explicadas por esas otras variables.
+
+
+# 3. Construcción del modelo aditivo generalizado
+
+Partiré del modelo obtenido tras la selección de varibales realizada en el apartado anterior e iré estudiando la funcion que mejor ajusta cada variable en el modelo aditivo.
+
+```{r message=FALSE, warning=FALSE}
+summary(modelostep_bw)
+modelostep_bw
+```
+
+A la vista de los coeficientes las variables que parecen tener más influencia en la variable respuesta son en este orden: *PrivateYes*, *perc.alumni*, *Top25perc*, *PhD*, *Terminal*, *Room.Board*, *Personal*, *Undergrad*, *Outstate*, *Apps* y *Expend*
+
+## 3.1 Estudio de la variable *perc.alumni*
+```{r message=FALSE, warning=FALSE}
+plot(perc.alumni, Grad.Rate, 
+     xlab="perc.alumni",  ylab="Grad. Rate",
+     main="Figura 2. Relación perc.alumni",
+     col="red")
+```
+
+Ajuste con splines suavizados
+```{r message=FALSE, warning=FALSE}
+fit_spl.alu=smooth.spline(perc.alumni, Grad.Rate ,cv=TRUE)
+
+spl.alu.1=gam(Grad.Rate ~ Private ,data=college)
+spl.alu.2=gam(Grad.Rate ~ Private + perc.alumni ,data=college)
+spl.alu.3=gam(Grad.Rate ~ Private + s(perc.alumni, 1), data=college)
+spl.alu.4=gam(Grad.Rate ~ Private + s(perc.alumni, 2), data=college)
+spl.alu.5=gam(Grad.Rate ~ Private + s(perc.alumni, round(fit_spl.alu$df, 3)), data=college)
+
+anova(spl.alu.1, spl.alu.2, spl.alu.3, spl.alu.4, spl.alu.5, test="F")
+
+```
+
+Ajuste polinómico
+```{r}
+poly.alu.1= gam(Grad.Rate~Private + perc.alumni ,data=college)
+poly.alu.2= gam(Grad.Rate~Private + poly(perc.alumni ,2) ,data=college)
+poly.alu.3= gam(Grad.Rate~Private + poly(perc.alumni ,3) ,data=college)
+poly.alu.4= gam(Grad.Rate~Private + poly(perc.alumni ,4) ,data=college)
+poly.alu.5= gam(Grad.Rate~Private + poly(perc.alumni ,5) ,data=college)
+
+anova(poly.alu.1, poly.alu.2, poly.alu.3, poly.alu.4, poly.alu.5)
+```
+
+```{r}
+anova(spl.alu.3, spl.alu.4, poly.alu.2)
+
+spl.alu.3$aic
+spl.alu.4$aic
+poly.alu.2$aic
+
+```
+
+Modelo resultante del estudio:
+gam(Grad.Rate ~ Private + s(perc.alumni, 2), data=college)
+
+Da mejores resultados modelando la variable perc.alumni con splines de grado 2
+
+## 3.2 Estudio de la variable *Apps*
+```{r}
+plot(Apps, Grad.Rate, 
+     xlab="Apps",  ylab="Grad. Rate",
+     main="Figura 2. Relación Apss",
+     col="red")
+```
+
+Ajuste con splines suavizados
+```{r message=FALSE, warning=FALSE}
+fit_spl.app=smooth.spline(Apps, Grad.Rate ,cv=TRUE)
+fit_spl.app$df
+
+spl.app.1=gam(Grad.Rate ~ Private + s(perc.alumni, 2), data=college)
+spl.app.2=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + Apps ,data=college)
+spl.app.3=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + s(Apps, 1), data=college)
+spl.app.4=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + s(Apps, 2), data=college)
+spl.app.5=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + s(Apps, round(fit_spl.app$df,3)), data=college)
+
+anova(spl.app.1, spl.app.2, spl.app.3, spl.app.4, spl.app.5, test="F")
+```
+
+Ajuste polinómico
+```{r}
+poly.alu.1= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + Apps, data=college)
+poly.alu.2= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,2) ,data=college)
+poly.alu.3= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,3) ,data=college)
+poly.alu.4= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,4) ,data=college)
+poly.alu.5= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) ,data=college)
+
+anova(poly.alu.1, poly.alu.2, poly.alu.3, poly.alu.4, poly.alu.5)
+```
+
+```{r}
+anova(spl.app.4, spl.app.5, poly.alu.4, poly.alu.5)
+spl.app.4$aic 
+spl.app.5$aic
+poly.alu.4$aic
+poly.alu.5$aic
+```
+La funcion que mejor ajusta la variable *Apps* es el polinomio de orden 5, por tanto, el mejor modelo hata ahora es:
+
+poly.alu.5= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) ,data=college)
+
+## 3.3 Estudio de la variable *Top25perc*
+```{r}
+plot(Top25perc, Grad.Rate, 
+     xlab="Top25perc",  ylab="Grad. Rate",
+     main="Figura 6. Relación Top25perc",
+     col="red")
+```
+
+Ajuste con splines suavizados 
+```{r message=FALSE, warning=FALSE}
+fit_spl.top=smooth.spline(Top25perc, Grad.Rate ,cv=TRUE)
+fit_spl.top$df
+
+spl.top.1=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5), data=college)
+
+spl.top.2=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc ,data=college)
+
+spl.top.3=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + s(Top25perc, 1), data=college)
+
+spl.top.4=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + s(Top25perc, 2), data=college)
+
+spl.top.5=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + s(Top25perc, 
+                          round(fit_spl.top$df,3)), data=college)
+
+anova(spl.top.1, spl.top.2, spl.top.3, spl.top.4, spl.top.5, test="F")
+```
+
+Ajuste con polinomios hasta orden 5
+```{r}
+poly.top.1= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc, 
+                data=college)
+
+poly.top.2= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + poly(Top25perc ,2),
+                data=college)
+
+poly.top.3= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + poly(Top25perc ,3),
+                data=college)
+
+poly.top.4= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + poly(Top25perc ,4),
+                data=college)
+
+poly.top.5= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + poly(Top25perc ,5),
+                data=college)
+
+anova(poly.top.1, poly.top.2, poly.top.3, poly.top.4, poly.top.5)
+```
+
+```{r}
+spl.top.2$aic
+spl.top.3$aic
+spl.top.5$aic
+```
+
+El mejor modelo es el que se muestra a continuación, para la variable *Top25perc* la mejor funcion es la lineal no es necesario añadir splines ni polinomios
+
+spl.top.2=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc ,data=college)
+
+
+## 3.4 Estudio de la variable *PhD*
+```{r}
+plot(PhD, Grad.Rate, 
+     xlab="PhD",  ylab="Grad. Rate",
+     main="Figura 7. Relación PhD",
+     col="red")
+```
+
+Ajuste mediante splines suavizados
+```{r message=FALSE, warning=FALSE}
+fit_spl.phd=smooth.spline(PhD, Grad.Rate ,cv=TRUE)
+fit_spl.phd$df
+
+spl.phd.1=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc, 
+              data=college)
+
+spl.phd.2=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+              PhD, data=college)
+
+spl.phd.3=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+              s(PhD, 1), data=college)
+
+spl.phd.4=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+              s(PhD, 2), data=college)
+
+spl.phd.5=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+              s(PhD, round(fit_spl.phd$df,3)), data=college)
+
+anova(spl.phd.1, spl.phd.2, spl.phd.3, spl.phd.4, spl.phd.5, test="F")
+```
+
+Ajuste polinómico
+```{r}
+poly.phd.1= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                PhD, data=college)
+
+poly.phd.2= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                poly(PhD ,2), data=college)
+
+poly.phd.3= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                poly(PhD ,3), data=college)
+
+poly.phd.4= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                poly(PhD ,4), data=college)
+
+poly.phd.5= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                poly(PhD ,5), data=college)
+
+anova(poly.phd.1, poly.phd.2, poly.phd.3, poly.phd.4, poly.phd.5)
+```
+
+```{r}
+spl.phd.3$aic
+```
+
+No mejora añadiendo la variable *PhD* al estudio, por tanto la eliminamos del modelo
+
+
+## 3.5 Estudio de la variable *Terminal*
+```{r}
+plot(Terminal, Grad.Rate, 
+     xlab="Terminal",  ylab="Grad. Rate",
+     main="Figura 8. Relación Terminal",
+     col="red")
+```
+
+Ajuste con splines suavizados
+```{r message=FALSE, warning=FALSE}
+fit_spl.terminal=smooth.spline(Terminal, Grad.Rate ,cv=TRUE)
+fit_spl.terminal$df
+
+spl.terminal.1=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc, 
+                   data=college)
+
+spl.terminal.2=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   Terminal, data=college)
+
+spl.terminal.3=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Terminal, 1), data=college)
+
+spl.terminal.4=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Terminal, 2), data=college)
+
+spl.terminal.5=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Terminal, round(fit_spl.terminal$df,3)), data=college)
+
+anova(spl.terminal.1, spl.terminal.2, spl.terminal.3, spl.terminal.4, spl.terminal.5, test="F")
+```
+
+Ajuste con polinomios
+```{r}
+poly.terminal.1= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                     Terminal, data=college)
+
+poly.terminal.2= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                     poly(Terminal, 2), data=college)
+
+poly.terminal.3= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                     poly(Terminal, 3), data=college)
+
+poly.terminal.4= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                     poly(Terminal, 4), data=college)
+
+poly.terminal.5= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                     poly(Terminal, 5), data=college)
+
+anova(poly.terminal.1, poly.terminal.2, poly.terminal.3, poly.terminal.4, poly.terminal.5)
+```
+
+```{r}
+spl.terminal.3$aic
+```
+El modelo no mejora introduciendo la variable *Terminal*, por tanto lo eliminamos del modelo
+
+
+## 3.6 Estudio de la variable *Room.Board*
+
+```{r}
+plot(Room.Board, Grad.Rate, 
+     xlab="Room.Board",  ylab="Grad. Rate",
+     main="Figura 9. Relación Room.Board",
+     col="red")
+```
+
+Ajuste con splines suavizados
+```{r message=FALSE, warning=FALSE}
+fit_spl.room=smooth.spline(Room.Board, Grad.Rate ,cv=TRUE)
+fit_spl.room$df
+
+spl.room.1=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc, 
+               data=college)
+
+spl.room.2=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+               Room.Board, data=college)
+
+spl.room.3=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+               s(Room.Board, 1), data=college)
+
+spl.room.4=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+               s(Room.Board, 2), data=college)
+
+spl.room.5=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+               s(Room.Board, 3), data=college)
+
+spl.room.6=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+               s(Room.Board, 4), data=college)
+
+spl.room.7=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+               s(Room.Board, 5), data=college)
+
+spl.room.8=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+               s(Room.Board, round(fit_spl.room$df,3)), data=college)
+
+
+anova(spl.room.1, spl.room.2, spl.room.3, spl.room.4, spl.room.5, 
+      spl.room.6, spl.room.7, spl.room.8, test="F")
+```
+
+Ajuste con polinomios de hasta orden 5
+```{r}
+poly.room.1= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                 Room.Board, data=college)
+
+poly.room.2= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                 poly(Room.Board, 2), data=college)
+
+poly.room.3= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                 poly(Room.Board, 3), data=college)
+
+poly.room.4= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                 poly(Room.Board, 4), data=college)
+
+poly.room.5= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                 poly(Room.Board, 5), data=college)
+
+anova(poly.room.1, poly.room.2, poly.room.3, poly.room.4, poly.room.5)
+```
+
+
+```{r}
+spl.room.2$aic
+spl.room.3$aic
+spl.room.4$aic
+spl.room.5$aic
+spl.room.6$aic
+poly.room.3$aic
+```
+Vemos que la inclusión de la variable *Room.Board* mejora considerablemente el modelo y que obtenemos mejor resultado cuando se ajusta con splines de grado 4 de libertad
+El mejor modelo es:
+
+spl.room.6=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + s(Room.Board, 4), data=college)
+
+
+## 3.7 Estudio de la variable *Personal*
+```{r}
+plot(Personal, Grad.Rate, 
+     xlab="Personal",  ylab="Grad. Rate",
+     main="Figura 10. Relación Personal",
+     col="red")
+```
+
+Ajuste con splines suavizados
+```{r message=FALSE, warning=FALSE}
+fit_spl.personal=smooth.spline(Personal, Grad.Rate ,cv=TRUE)
+fit_spl.personal$df
+           
+spl.personal.1=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Room.Board, 4), data=college)
+
+spl.personal.2=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Room.Board, 4) + Personal ,data=college)
+
+spl.personal.3=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Room.Board, 4) + s(Personal, 1), data=college)
+
+spl.personal.4=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Room.Board, 4) + s(Personal, 2), data=college)
+
+spl.personal.5=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Room.Board, 4) + s(Personal, 3), data=college)
+
+spl.personal.6=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Room.Board, 4) + s(Personal, 4), data=college)
+
+spl.personal.7=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Room.Board, 4) + s(Personal, 5), data=college)
+
+spl.personal.8=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Room.Board, 4) + s(Personal, round(fit_spl.personal$df,3)), data=college)
+
+anova(spl.personal.1, spl.personal.2, spl.personal.3, spl.personal.4, spl.personal.5, 
+      spl.personal.6, spl.personal.7, spl.personal.8, test="F")
+```
+
+Ajuste con polinomios de hasta orden 5
+```{r}
+poly.personal.1= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                     s(Room.Board, 4) + Personal, data=college)
+
+poly.personal.2= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                     s(Room.Board, 4) + poly(Personal ,2) ,data=college)
+
+poly.personal.3= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                     s(Room.Board, 4) + poly(Personal ,3) ,data=college)
+
+poly.personal.4= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                     s(Room.Board, 4) + poly(Personal ,4) ,data=college)
+
+poly.personal.5= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                     s(Room.Board, 4) + poly(Personal ,5) ,data=college)
+
+anova(poly.personal.1, poly.personal.2, poly.personal.3, poly.personal.4, poly.personal.5)
+```
+
+```{r}
+spl.personal.2$aic
+spl.personal.3$aic
+poly.personal.4$aic
+```
+La inclusión de la variable *Personal* mejora el modelo. El mejor modelo obtenido hasta el momento es *spl.personal.2*
+
+
+## 3.8 Estudio de la variable *P.Undergrad*
+
+```{r}
+plot(P.Undergrad, Grad.Rate, 
+     xlab="P.Undergrad",  ylab="Grad. Rate",
+     main="Figura 11. Relación P.Undergrad",
+     col="red")
+```
+
+Ajuste con splines suavizados
+```{r message=FALSE, warning=FALSE}
+fit_spl.under=smooth.spline(P.Undergrad, Grad.Rate ,cv=TRUE)
+fit_spl.under$df
+           
+spl.under.1=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                s(Room.Board, 4) + Personal, data=college)
+
+spl.under.2=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                s(Room.Board, 4) + Personal + P.Undergrad ,data=college)
+
+spl.under.3=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                s(Room.Board, 4) + Personal + s(P.Undergrad, 1), data=college)
+
+spl.under.4=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                s(Room.Board, 4) + Personal + s(P.Undergrad, 2), data=college)
+
+spl.under.5=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                s(Room.Board, 4) + Personal + s(P.Undergrad, 3), data=college)
+
+spl.under.6=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                s(Room.Board, 4) + Personal + s(P.Undergrad, 4), data=college)
+
+spl.under.7=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                s(Room.Board, 4) + Personal + s(P.Undergrad, 5), data=college)
+
+spl.under.8=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                s(Room.Board, 4) + Personal + s(P.Undergrad, round(fit_spl.under$df,3)), 
+                data=college)
+
+anova(spl.under.1, spl.under.2, spl.under.3, spl.under.4, spl.under.5, spl.under.6, 
+      spl.under.7, spl.under.8, test="F")
+```
+
+Ajuste con polinomios de hasta orden 5
+
+```{r}
+poly.under.1= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                  s(Room.Board, 4) + Personal + Personal, data=college)
+
+poly.under.2= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                  s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) ,data=college)
+
+poly.under.3= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                  s(Room.Board, 4) + Personal + poly(P.Undergrad ,3) ,data=college)
+
+poly.under.4= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                  s(Room.Board, 4) + Personal + poly(P.Undergrad ,4) ,data=college)
+
+poly.under.5= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                  s(Room.Board, 4) + Personal + poly(P.Undergrad ,5) ,data=college)
+
+anova(poly.under.1, poly.under.2, poly.under.3, poly.under.4, poly.under.5)
+```
+
+```{r}
+spl.under.2$aic
+spl.under.3$aic
+spl.under.4$aic
+poly.under.2$aic
+poly.under.4$aic
+```
+El modelo mejora añadiendo la variable *Undergrad* ajustada con polinomios de orden 2 
+
+
+
+## 3.9 Esutido de la variable *Outstate*
+```{r}
+plot(Outstate, Grad.Rate, 
+     xlab="Outstate",  ylab="Grad. Rate",
+     main="Figura 12. Relación Outstate",
+     col="red")
+```
+
+Ajuste con splines suavizados
+```{r message=FALSE, warning=FALSE}
+fit_spl.out=smooth.spline(Outstate, Grad.Rate ,cv=TRUE)
+fit_spl.out$df
+           
+spl.out.1=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+              s(Room.Board, 4) + Personal + poly(P.Undergrad ,2), 
+              data=college)
+
+spl.out.2=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+              s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + Outstate ,
+              data=college)
+
+spl.out.3=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+              s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 1), 
+              data=college)
+
+spl.out.4=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+              s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 2), 
+              data=college)
+
+spl.out.5=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+              s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 3), 
+              data=college)
+
+spl.out.6=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+              s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 4), 
+              data=college)
+
+spl.out.7=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+              s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 5), 
+              data=college)
+
+spl.out.8=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+              s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + 
+              s(Outstate, round(fit_spl.out$df,3)), 
+              data=college)
+
+anova(spl.out.1, spl.out.2, spl.out.3, spl.out.4, spl.out.5, 
+      spl.out.6, spl.out.7, spl.out.8, test="F")
+```
+
+Ajuste con polinomios de hasta orden 5
+```{r}
+poly.out.1= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + Outstate, 
+                data=college)
+
+poly.out.2= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + poly(Outstate ,2), 
+                data=college)
+
+poly.out.3= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + poly(Outstate ,3), 
+                data=college)
+
+poly.out.4= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + poly(Outstate ,4),
+                data=college)
+
+
+poly.out.5= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + poly(Outstate ,5),
+                data=college)
+
+anova(poly.out.1, poly.out.2, poly.out.3, poly.out.4, poly.out.5)
+```
+
+```{r}
+spl.out.2$aic
+spl.out.3$aic
+spl.out.4$aic
+spl.out.5$aic
+spl.out.6$aic
+spl.out.7$aic
+spl.out.8$aic
+
+poly.out.2$aic
+poly.out.4$aic
+```
+
+Para la variable OutState el mejor ajuste se obtiene usando splines suavizados de grado de libertad igual a 5
+
+
+## 3.10 Estudio de la variable *Expend*
+```{r}
+plot(Expend, Grad.Rate, 
+     xlab="Expend",  ylab="Grad. Rate",
+     main="Figura 13. Relación Expend",
+     col="red")
+```
+Ajuste con splines suavizados
+```{r message=FALSE, warning=FALSE}
+fit_spl.expend=smooth.spline(Expend, Grad.Rate ,cv=TRUE)
+fit_spl.expend$df
+           
+spl.expend.1=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+                 s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 5), 
+                 data=college)
+
+spl.expend.2=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+                 s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 5) + 
+                 Expend ,data=college)
+
+spl.expend.3=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+                 s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 5) + 
+                 s(Expend, 1), data=college)
+
+spl.expend.4=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+                 s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 5) + 
+                 s(Expend, 2), data=college)
+
+spl.expend.5=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+                 s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 5) + 
+                 s(Expend, 3), data=college)
+
+spl.expend.6=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+                 s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 5) + 
+                 s(Expend, 4), data=college)
+
+spl.expend.7=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+                 s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 5) + 
+                 s(Expend, 5), data=college)
+
+spl.expend.8=gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps,5) + Top25perc + 
+                 s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 5) + 
+                 s(Expend, round(fit_spl.expend$df,3)), data=college)
+
+anova(spl.expend.1, spl.expend.2, spl.expend.3, spl.expend.4, spl.expend.5, 
+      spl.expend.6, spl.expend.7, spl.expend.8, test="F")
+```
+
+Ajuste con funciones polinómicas
+```{r}
+poly.expend.1= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + 
+                   Top25perc + s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + 
+                   s(Outstate, 5) + Expend, data=college)
+
+poly.expend.2= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 5) + 
+                   poly(Expend ,2) ,data=college)
+
+poly.expend.3= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 5) + 
+                   poly(Expend ,3) ,data=college)
+
+poly.expend.4= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 5) + 
+                   poly(Expend ,4) ,data=college)
+
+
+poly.expend.5= gam(Grad.Rate ~ Private + s(perc.alumni, 2) + poly(Apps ,5) + Top25perc + 
+                   s(Room.Board, 4) + Personal + poly(P.Undergrad ,2) + s(Outstate, 5) + 
+                   poly(Expend ,5) ,data=college)
+
+anova(poly.expend.1, poly.expend.2, poly.expend.3, poly.expend.4, poly.expend.5)
+```
+
+```{r}
+spl.expend.2$aic
+spl.expend.3$aic
+spl.expend.4$aic
+spl.expend.5$aic
+poly.expend.2$aic
+poly.expend.3$aic
+```
+Para la variable *Expend* la función que mejor ajusta es usando polinomios de orden 3.
+
+
+```{r}
+detach(college)
+```
+
+
+# 4. Modelo resultante
+El modelo propuesto es el que hemos denominado como *poly.expend.3*, se trata de un modelo aditivo generalizado que incluye las siguientes variables:
+
+*gam(Grad.Rate ~ Private + Top25perc + Personal +
+                 s(perc.alumni, 2) + poly(Apps ,5) + s(Room.Board, 4) + 
+                 poly(P.Undergrad ,2) + s(Outstate, 5) + poly(Expend ,3) , data=college)*
+
+* **Private**: la funcion que mejor ajusta esta variable es la lineal, polinomio de grado 1.
+* **Top25perc**: la funcion que mejor ajusta esta variable es la lineal, polinomio de grado 1.
+* **Personal**: la funcion que mejor ajusta esta variable es la lineal, polinomio de grado 1.
+* **perc.alumni**: la funcion que mejor ajusta esta variable con splines suavizados con 2 grados de libertad
+* **Room.Board**: la funcion que mejor ajusta esta variable con splines suavizados con 4 grados de libertad
+* **Outstate**: la funcion que mejor ajusta esta variable con splines suavizados con 5 grados de libertad
+* **P.Undergrad**: la funcion que mejor ajusta esta variable con splines suavizados con 2 grados de libertad
+* **Expend**: la funcion que mejor ajusta esta variable con splines suavizados con 3 grados de libertad
+* **Apps**: la funcion que mejor ajusta esta variable con splines suavizados con 5 grados de libertad
+
+
+El AIC de este modelo es igual a  **6123.5** , es un AIC alto, por tanto vemos que el modelo aditivo generalizado propuesto no es muy satisfactorio para este conjunto de datos. 
+

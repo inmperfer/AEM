@@ -1,0 +1,467 @@
+---
+title: "AEMOD: Ejercicio 1 (Fichero Auto)"
+author: "Inmaculada Perea Fernández"
+date: "Febrero 2017"
+output: pdf_document
+---
+
+
+
+Con el fichero Auto de la librería ISLR seleccionar los vehículos con mpg>=13
+
+Proponer un modelo que identifique qué variables influyen en la nueva variable de conteo: m_13=round(mpg-13).
+
+
+
+# 1. Carga de librerías necesarias
+
+```{r message=FALSE, warning=FALSE}
+library(ISLR)
+library(ggplot2)
+library(MASS)
+```
+
+
+# 2. Obtención e inspección del conjunto de datos para el estudio
+
+El fichero Auto tiene las siguientes variables:
+
+* mpg: miles per gallon
+* cylinders: Number of cylinders between 4 and 8
+* displacement: Engine displacement (cu. inches)
+* horsepower: Engine horsepower
+* weight: Vehicle weight (lbs.)
+* acceleration: Time to accelerate from 0 to 60 mph (sec.)
+* year: Model year (modulo 100)
+* origin: Origin of car (1. American, 2. European, 3. Japanese)
+* name: Vehicle name
+
+
+```{r}
+data(Auto)
+str(Auto)
+head(Auto)
+dim(Auto)
+summary(Auto)
+```
+
+
+## 2.1 Construcción del conjunto de datos sobre el que realiza el análisis.
+
+Filtramos el conjunto de datos original para quedarnos con el subconjunto correspondiente al consumo mpg>= 13 y eliminar las variables mpg y name
+
+```{r}
+mpg_ge_13<-Auto[I(Auto$mpg>=13),]
+head(mpg_ge_13)
+dim(mpg_ge_13)
+summary(mpg_ge_13)
+data_auto = data.frame(m_13=round(mpg_ge_13$mpg-13), mpg_ge_13[2:8])
+head(data_auto)
+dim(data_auto)
+str(data_auto)
+summary(data_auto)
+```
+
+
+Observamos que la variable *origin* es tipo categórica pero en el fichero no está representada como tal, vamos a usar la función factor para representarla correctamente. Consultando la ayuda de R para el dataset Auto, vemos que la categorización es la siguiente:
+1 = American
+2 = European
+3 = Japanese)
+```{r}
+data_auto <- within(data_auto, {origin <- factor(origin, levels=1:3, 
+                                labels=c("American", "European", "Japanese"))})
+
+summary(data_auto)
+```
+
+## 2.2 Inspección gráfica de la relación con la variable objetivo *m_13*
+```{r}
+ggplot(data_auto, aes(m_13)) +  geom_histogram(binwidth=.5, position="dodge")
+```
+
+
+```{r}
+par(mfrow=c(1,2))
+plot(data_auto$cylinders, data_auto$m_13, 
+     xlab="cylinders",  ylab="m_13",
+     main="Figura 1. Relación cylinders",
+     col="red")
+
+plot(data_auto$displacement, data_auto$m_13, 
+     xlab="displacement",  ylab="m_13",
+     main="Figura 2. Relación displacement",
+     col="red")
+
+```
+
+
+
+
+```{r}
+par(mfrow=c(1,2))
+
+plot(data_auto$horsepower, data_auto$m_13, 
+     xlab="horsepower",  ylab="m_13",
+     main="Figura 3. Relación horsepower",
+     col="red")
+
+plot(data_auto$weight, data_auto$m_13, 
+     xlab="weight",  ylab="m_13",
+     main="Figura 4. Relación weight",
+     col="red")
+
+```
+
+
+
+```{r}
+par(mfrow=c(1,2))
+
+plot(data_auto$acceleration, data_auto$m_13, 
+     xlab="acceleration",  ylab="m_13",
+     main="Figura 5. Relación acceleration",
+     col="red")
+
+plot(data_auto$year, data_auto$m_13, 
+     xlab="year",  ylab="m_13",
+     main="Figura 6. Relación year",
+     col="red")
+
+```
+
+
+
+```{r}
+plot(data_auto$origin, data_auto$m_13, 
+     xlab="origin",  ylab="m_13",
+     main="Figura 7. Relación origin",
+     col="red")
+
+ggplot(data_auto, aes(data_auto$m_13, fill = data_auto$origin)) +
+  geom_histogram(binwidth=1, position="dodge")
+
+```
+
+
+# 3. Construcción del modelo
+
+La variable objetivo m_13 es una variable de conteo, dos de las distribuciones empleadas para modelar datos de conteo son la Poisson y la Binomial Negativa.
+
+Cuando la variable puede tomar valores desde cero y no tiene una cota superior una posible distribuciónn es la de Poisson.
+
+Si no se cumple la condición de igualdad entre la media y la varianza de la distribución la Binomial negativa puede ser el modelo más adecuado.
+
+Vamos a comparar la media y la varianza de la variable objetivo m_13
+
+```{r}
+media=mean(data_auto$m_13)
+varianza=var(data_auto$m_13)
+
+cat("varianza =", round(varianza, 2))
+cat("media =", round(media,2))
+```
+
+
+Observamos que no es razonable asumir que la media y la varianza son semejantes. La varianza y la media son distintas. La varianza es mayor que la media, por tanto existe sobredispersión y es mas adecuado aplicar el modelo binommial negativo.
+
+A continuación estudiaremos la influencia o no de cada una de las variables con el modelo binomial negativo y finalmente lo compararemos con el modelo de Poisson.
+
+
+## 3.1 Modelo binomial negativo con todas las variables
+Construimos el modelo binomial negativo con todas las variables del conjunto de datos
+```{r message=FALSE, warning=FALSE}
+mfull = glm.nb(m_13 ~ ., data = data_auto)
+(sum.mfull=summary(mfull))
+```
+
+## 3.2 Paso 1: Modelo eliminando 1 variable del modelo completo
+En este paso tomaré el modelo completo (*mfull*) e iré eliminando en cada etapa una de las variables para medir qué influencia tiene sobre la variable objetivo
+
+### 3.2.1 Eliminando la variable *cylinders* del modelo completo
+
+```{r}
+mfull.cylinders <- update(mfull, . ~ . - cylinders)
+sum.cilynders=summary(mfull.cylinders)
+(anov.cilynders=anova(mfull, mfull.cylinders))
+```
+Observamos que la variable *cylinders* no influye en el consumo.
+
+### 3.2.2 Eliminando la variable *displacement* del modelo completo
+```{r}
+mfull.displacement <- update(mfull, . ~ . - displacement)
+sum.displacement=summary(mfull.displacement)
+(anov.displacement=anova(mfull, mfull.displacement))
+```
+La variable *displacement* no influye en el consumo.
+
+
+### 3.2.3 Eliminando la variable *horsepower* del modelo completo
+```{r}
+mfull.horsepower <- update(mfull, . ~ . - horsepower)
+sum.horsepower=summary(mfull.horsepower)
+(anov.horsepower=anova(mfull, mfull.horsepower))
+```
+La variable *horsepower* si es significativa
+
+### 3.2.4 Eliminando la variable *weight* del modelo completo
+```{r}
+mfull.weight <- update(mfull, . ~ . - weight)
+sum.weight=summary(mfull.weight)
+(anov.weight=anova(mfull, mfull.weight))
+```
+La variable *weight* influye significativamente sobre el consumo
+
+### 3.2.5 Eliminando la variable *acceleration* del modelo completo
+```{r}
+mfull.acceleration <- update(mfull, . ~ . - acceleration)
+sum.acceleration=summary(mfull.acceleration)
+(anov.acceleration=anova(mfull, mfull.acceleration))
+```
+Confirmamos que la variable *acceleration* no es significativa sobre el consumo
+
+### 3.2.6 Eliminando la variable *year* del modelo completo
+```{r}
+mfull.year <- update(mfull, . ~ . - year)
+sum.year=summary(mfull.year)
+(anov.year=anova(mfull, mfull.year))
+```
+La variable *year* si es significativo para el consumo
+
+
+### 3.2.7 Eliminando la variable *origin* del modelo completo
+```{r}
+mfull.origin <- update(mfull, . ~ . - origin)
+sum.origin=summary(mfull.origin)
+(anov.origin=anova(mfull, mfull.origin, test="Chisq"))
+```
+
+La variable *origin* no es significativo
+
+
+### 3.2.8 Tabla resumen paso 1
+A continuación construiremos una tabla resumen con el resultado de eliminar del modelo completo cada una de las variables
+```{r}
+comp_mfull=c(sum.mfull$aic, sum.mfull$deviance, 0)
+
+comp_mfull.cilynders=c(sum.cilynders$aic, 
+                       sum.cilynders$deviance, 
+                       anov.acceleration$`Pr(Chi)`[2])
+
+comp_mfull.displacement=c(sum.displacement$aic, 
+                          sum.displacement$deviance, 
+                          anov.displacement$`Pr(Chi)`[2])
+
+comp_mfull.horsepower=c(sum.horsepower$aic, 
+                        sum.horsepower$deviance, 
+                        anov.horsepower$`Pr(Chi)`[2])
+
+comp_mfull.weight=c(sum.weight$aic, 
+                    sum.weight$deviance, 
+                    anov.weight$`Pr(Chi)`[2])
+
+comp_mfull.acceleration=c(sum.acceleration$aic, 
+                          sum.acceleration$deviance, 
+                          anov.acceleration$`Pr(Chi)`[2])
+
+comp_mfull.year=c(sum.year$aic, 
+                  sum.year$deviance, 
+                  anov.year$`Pr(Chi)`[2])
+
+comp_mfull.origin=c(sum.origin$aic, 
+                    sum.origin$deviance, 
+                    anov.origin$`Pr(Chi)`[2])
+
+
+tabla_step1 = data.frame (round(rbind(comp_mfull, comp_mfull.cilynders, 
+                                      comp_mfull.displacement,comp_mfull.horsepower, 
+                                      comp_mfull.weight, comp_mfull.acceleration,
+                                      comp_mfull.year, comp_mfull.origin), 3), 
+                                      row.names=c("mfull (modelo completo)", 
+                                                  "mfull-cylinder",
+                                                  "mfull-displacement",
+                                                  "mfull-horsepower",
+                                                  "mfull-weight",
+                                                  "mfull-acceleration",
+                                                  "mfull-year",
+                                                  "mfull-origin"))
+
+print(knitr::kable(tabla_step1, format = "pandoc",
+                   col.names = c("AIC", "Deviance", "Pr(Chi)"), align='c'))
+```
+
+A la vista de los resultados, podemos concluir que las variables menos significativas son por este orden: cylinder, acceleration, displacement, origin, ya que hemos comprobado que eliminarlas no influye, y que el AIC del modelo resultante es menor que el que contempla todas las variables.
+
+
+## 3.3 Paso 2: Eliminando 2 variables al modelo completo
+Nos quedamos con el mejor modelo del paso 1 y repetimos el proceso.
+
+El mejor modelo del paso anterior es el modelo resultante de eliminar la variable *cylinders* al modelo completo, este modelo lo hemos nombrado como *mfull.cylinders*, cuyo summary es el siguiente:
+```{r}
+sum.cilynders
+```
+
+Vemos que la variable *acceleration* no es significativa del modelo mfull.cylinders, probamos a eliminar dicha variable
+```{r}
+mfull.cylinders.acc <- update(mfull.cylinders, . ~ . - acceleration)
+sum.cylinders.acc=summary(mfull.cylinders.acc)
+(anov.cylinders.acc=anova(mfull.cylinders, mfull.cylinders.acc, test="Chisq"))
+```
+
+Vemos que la variable *acceleration* no es significativa en el modelo mfull.cylinders, en el paso 3 haremos pruebas para ver si es posible simplificar aun mas.
+
+## 3.4 Paso 3: Eliminando 3 variables al modelo completo
+Nos quedamos con el mejor modelo del paso 2 y repetimos el proceso.
+
+El mejor modelo del paso anterior es el modelo resultante de eliminar la variable *acceleration* al modelo mfull.cylinders, este modelo lo hemos nombrado como *mfull.cylinders.acc*, cuyo summary es el siguiente:
+```{r}
+sum.cylinders.acc
+```
+
+Observamos que todas las variables son significativas, vamos a probar a eliminar *displacement* 
+
+```{r}
+mfull.cylinders.acc.dis <- update(mfull.cylinders.acc, . ~ . - displacement)
+sum.cylinders.acc.dis=summary(mfull.cylinders.acc.dis)
+(anov.cylinders.acc.dis=anova(mfull.cylinders.acc, mfull.cylinders.acc.dis, test="Chisq"))
+```
+La variable *displacement* si que es significativo en el modelo mfull.cylinders.acc
+
+Probamos ahora a eliminar *origin*
+
+```{r}
+mfull.cylinders.acc.orig <- update(mfull.cylinders.acc, . ~ . - origin)
+sum.cylinders.acc.orig=summary(mfull.cylinders.acc.orig)
+(anov.cylinders.acc.orig=anova(mfull.cylinders.acc, mfull.cylinders.acc.orig, test="Chisq"))
+```
+Vemos que la variable *origin* no es significativa, por tanto la eliminamos del modelo
+
+## 3.4 Paso 4: Eliminando 4 variables al modelo completo
+
+Repetimos el proceso con el modelo resultante del paso 3, *mfull.cylinders.acc.orig*
+```{r}
+sum.cylinders.acc.orig
+```
+
+En este modelo todas las variables son significativas, pero probaremos a eliminar *displacement* que es la que presenta un mayor p-valor
+```{r}
+mfull.cylinders.acc.orig.dis <- update(mfull.cylinders.acc.orig, . ~ . - displacement)
+sum.cylinders.acc.orig.dis=summary(mfull.cylinders.acc.orig.dis)
+(anov.cylinders.acc.orig.dis=anova(mfull.cylinders.acc.orig, mfull.cylinders.acc.orig.dis, test="Chisq"))
+```
+Tal y com suponíamos a la vista del summary del modelo mfull.cylinders.acc.orig vemos que no podemos simplificar más el modelo.
+
+
+## 3.5 Tabla resumen
+Vamos a actualizar la tabla comparativa con todos los modelos calculados
+```{r}
+comp_mfull.cylinders.acc = c(sum.cylinders.acc$aic,
+                             sum.cylinders.acc$deviance,
+                             anov.cylinders.acc$`Pr(Chi)`[2])
+
+comp_mfull.cylinders.acc.dis= c(sum.cylinders.acc.dis$aic, 
+                                sum.cylinders.acc.dis$deviance,
+                                anov.cylinders.acc.dis$`Pr(Chi)`[2])
+
+comp_mfull.cylinders.acc.orig= c(sum.cylinders.acc.orig$aic,
+                                 sum.cylinders.acc.orig$deviance,
+                                 anov.cylinders.acc.orig$`Pr(Chi)`[2])
+
+comp_mfull.cylinders.acc.orig.dis= c(sum.cylinders.acc.orig.dis$aic,
+                                     sum.cylinders.acc.orig.dis$deviance,
+                                     anov.cylinders.acc.orig.dis$`Pr(Chi)`[2])
+
+
+tabla_step2 = data.frame (rbind(tabla_step1, 
+                                comp_mfull.cylinders.acc, 
+                                comp_mfull.cylinders.acc.dis,
+                                comp_mfull.cylinders.acc.orig,
+                                comp_mfull.cylinders.acc.orig.dis),
+                                row.names=c("mfull (modelo completo)", 
+                                            "mfull-cylinder",
+                                            "mfull-displacement",
+                                            "mfull-horsepower",
+                                            "mfull-weight",
+                                            "mfull-acceleration",
+                                            "mfull-year",
+                                            "mfull-origin",
+                                            "mfull-cylinder-acceleration",
+                                            "mfull-cylinder-acceleration-displacement",
+                                            "mfull-cylinder-acceleration-origin (BEST)",
+                                            "mfull-cylinder-acceleration-origin-displacement"))
+
+
+
+
+print(knitr::kable(tabla_step2, format = "pandoc",
+                   col.names = c("AIC", "Deviance", "Pr(Chi)"), align='c'))
+```
+
+
+# 4. Modelo resultante
+
+El mejor modelo obtenido es el resultante de eliminar las variables *cylinder*, *acceleration* y *origin* al modelo binomial negativo con todas las variables. 
+Este modelo presenta un AIC = 1795.220, y en la tabla anterior corresponde a la fila *mfull-cylinder-acceleration-origin (BEST)*
+
+
+Las estimaciones de los coeficientes y sus intervalos de confianza son las siguientes.
+
+```{r}
+(est <- cbind(Estimate = coef(mfull.cylinders.acc.orig), 
+              confint(mfull.cylinders.acc.orig)))
+
+```
+
+
+Siendo los valores de las exponenciales
+```{r}
+(exp(est))
+```
+
+El modelo propuesto es el siguiente:
+
+*ln(m_13) = -0.5959 - 0.0019·displacement - 0.0055·horsepower -0.0005·weight + 0.0657·year*
+
+El consumo de un vehículo depende de las siguientes variables:
+
+* **displacement**: relación directamente proporcional con el consumo del vehículo
+* **horsepower**: relación directamente proporcional con el consumo del vehículo (cuanta mas potencia tiene el motor más consume)
+* **weight**: relación directamente proporcional con el consumo del vehículo (cuanto más pesado es el vehículo más consume)
+* **year**: relación inversalmente proporcional con el consumo del vehículo (cuanto más nuevo es el vehículo menos consume)
+
+
+
+La bondad de ajuste global viene dada por
+```{r}
+with(mfull.cylinders.acc.orig, 
+     cbind(res.deviance = deviance, 
+           df = df.residual,
+           p = pchisq(deviance, df.residual, lower.tail=FALSE)))
+```
+
+Gráfica de los residuos frente a la variable de estudio (m_13)
+
+```{r}
+plot(data.frame(data_auto$m_13, mfull.cylinders.acc.orig$resid), col="red")
+```
+
+El gráfico de valores observados contra residuos pone de manifiesto como aumenta la varianza de los residuos
+
+
+# 5. Comparación con el modelo Poisson
+
+A continuación compararemos el modelo propuesto construido usando el modelo binomial negativo con el construido utilizando Poisson.
+
+```{r}
+mPoisson <- glm(data_auto$m_13 ~ displacement + horsepower + weight + year,
+                data=data_auto, family=poisson)
+
+summary(mPoisson)
+```
+
+```{r}
+X2 <- 2 * (logLik(mfull) - logLik(mPoisson))
+X2
+pchisq(X2, df = 1, lower.tail=FALSE)
+```
+El valor obtenido de Chi es algo mayor que 0.05, por tanto vemos que el modelo binomial negativo es más apropiado que el modelo de Poisson, aunque realmente ambos modelos son similares, puesto que los p-valores obtenidos con el modelo de Poisson sugieren un modelo muy similar, las variables significativas son similares a las obtenidas con el modelo binomial negativo, por tanto podemos concluir que  aunque no se cumpla la hipótesis de varianza igual a media para aplicar el modelo de Poisson el modelo resultante con aplicando Poisson también da buenos resultados sobre este conjunto de datos.
+
